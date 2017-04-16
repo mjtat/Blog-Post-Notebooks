@@ -1,0 +1,183 @@
+---
+title: "Vid Game Analyses"
+output: html_notebook
+---
+
+**Import the required libraries.**
+
+```{r}
+library(caret)
+library(DMwR)
+library(ggplot2)
+library(reshape2)
+library(GGally)
+library(dummies)
+```
+
+**Read in the data.**
+
+```{r}
+vg <- read.csv('vid_games.csv', stringsAsFactors = FALSE)
+```
+
+**Reshape the data so I can make histograms with them.**
+
+```{r}
+sales <- melt(vg, id = c("Publisher"), measure.vars = c("NA_Sales", "EU_Sales", "JP_Sales", "Other_Sales"))
+names(sales) <- c("Publisher", "Region", "sales")
+```
+
+```{r}
+global_hist <- ggplot(sales, aes(x = sales))
+global_hist + geom_histogram(colour = "blue", fill = "white", binwidth = 0.75, bins = 50) + facet_wrap(~Region)
+```
+
+```{r}
+global_hist2 <- ggplot(sales, aes(x = log(sales)))
+global_hist2 + geom_histogram(colour = "blue", fill = "white", binwidth = 0.75, bins = 50) + facet_wrap(~Region)
+```
+
+**Convert some of the variables into factors.**
+
+```{r}
+vg$Genre <- as.factor(vg$Genre)
+vg$Platform <- as.factor(vg$Platform)
+```
+
+**Create some dummy variables for each platform, bind them back into the main data frame.**
+
+```{r}
+platform <- dummy(vg$Platform)
+vg <- cbind(vg, platform)
+```
+
+**Run correlations on a subset of the data.**
+
+```{r}
+ggcorr(vg[2:9], low = 'lightcyan', mid = 'cyan1', high = 'darkblue', label = TRUE, label_size = 5, geom = 'tile', layout.exp =0)
+```
+
+** Clean up the data a little, remove columns that are inimportant or where I could not feasibly impute missing data.**
+
+```{r}
+vg<-vg[-c(660,14247),]
+vg[c(1:5, 7)] <- NULL
+vg[c(9, 11, 12)] <- NULL
+```
+
+** I experimented with a log transform here.**
+
+```{r}
+#vg$NA_Sales <- log(vg$NA_Sales)
+#vg$EU_Sales <- log(vg$EU_Sales)
+#vg$JP_Sales <- log(vg$JP_Sales)
+#vg$Other_Sales <-log(vg$Other_Sales)
+#vg$Global_Sales <-log(vg$Global_Sales)
+```
+
+```{r}
+unique(vg$Genre)
+```
+
+**Relabeled all the genres.**
+
+```{r}
+vg$Genre[vg$Genre == "Sports"] <- 1
+vg$Genre[vg$Genre == "Platform"] <- 2
+vg$Genre[vg$Genre == "Racing"] <- 3
+vg$Genre[vg$Genre == "Role-Playing"] <- 4
+vg$Genre[vg$Genre == "Puzzle"] <- 5
+vg$Genre[vg$Genre == "Misc"] <- 6
+vg$Genre[vg$Genre == "Shooter"] <- 7
+vg$Genre[vg$Genre == "Simulation"] <- 8
+vg$Genre[vg$Genre == "Action"] <- 9
+vg$Genre[vg$Genre == "Fighting"] <- 10
+vg$Genre[vg$Genre == "Adventure"] <- 11
+vg$Genre[vg$Genre == "Strategy"] <- 12
+```
+
+**Create a test train split.**
+
+```{r}
+
+split <- createDataPartition(vg$Genre, p = .8, list = FALSE, times = 1)
+vg_train <- vg[split,]
+vg_test <- vg[-split,]
+```
+
+**Set up parameters for my grid search and cross-validation.**
+
+```{r}
+mtry <- sqrt(ncol(vg))
+tunegrid <- expand.grid(.mtry = mtry)
+metric <- 'Accuracy'
+control <- trainControl(method = 'repeatedcv', number = 10, repeats = 2, search = 'random', savePredictions = TRUE)
+```
+
+**Training two models, one with 15 trees, another with 500 trees in caret.**
+```{r}
+model_train1 <- train(Genre ~ ., data = vg_train, method = 'rf', trControl = control, tunegrid = tunegrid, metric = metric, ntree = 15, preProcess = c('BoxCox'))
+
+model_train2 <- train(Genre ~ ., data = vg_train, method = 'rf', trControl = control, tunegrid = tunegrid, metric = metric, ntree = 500, preProcess = c('BoxCox'))
+```
+
+**Plotting CV results.**
+
+```{r}
+plot(model_train1, ylim=c(.3, .4))
+
+```
+
+```{r}
+plot(model_train2, ylim=c(.3, .4))
+```
+
+**Generating predicted values.**
+
+```{r}
+rf_predict <- predict(model_train1, newdata = vg_test)
+rf_predict2<- predict(model_train2, newdata = vg_test)
+```
+
+**Generating the plots for my confusion matrices (using ggplot)**
+
+```{r}
+cf1<-confusionMatrix(rf_predict, vg_test$Genre)
+```
+
+```{r}
+cf2<-confusionMatrix(rf_predict2, vg_test$Genre)
+```
+
+```{r}
+
+actual = as.data.frame(table(vg_test$Genre))
+names(actual) = c("Actual","ActualFreq")
+actual$Actual <- as.integer(actual$Actual)
+
+
+confusion = as.data.frame(table(vg_test$Genre, rf_predict))
+names(confusion) = c("Actual","Predicted","Freq")
+confusion = merge(confusion, actual)
+confusion$Actual <- as.integer(confusion$Actual)
+confusion$Predicted <- as.integer(confusion$Predicted)
+confusion[order(confusion$Actual, confusion$Predicted),]
+confusion$Actual<- as.factor(confusion$Actual)
+confusion$Predicted <-as.factor(confusion$Predicted)
+
+confusion$Percent = confusion$Freq/confusion$ActualFreq*100
+tile <- ggplot() + geom_tile(aes(x=Actual, y=Predicted,fill=Percent),data=confusion, color="black",size=0.1) + labs(x="Actual",y="Predicted")
+
+tile = tile + 
+geom_text(aes(x=Actual,y=Predicted, label=sprintf("%.1f", Percent)),data=confusion, size=3, colour="black") +
+scale_fill_gradient(low="lightcyan",high="darkblue")
+
+# lastly we draw diagonal tiles. We use alpha = 0 so as not to hide previous layers but use size=0.3 to highlight border
+tile = tile + 
+geom_tile(aes(x=Actual,y=Predicted),data=subset(confusion, as.character(Actual)==as.character(Predicted)), color="black",size=0.3, fill="black", alpha=0) 
+ 
+#render
+tile
+
+```
+
