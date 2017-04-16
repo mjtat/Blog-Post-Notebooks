@@ -57,7 +57,7 @@ vg <- cbind(vg, platform)
 ggcorr(vg[2:9], low = 'lightcyan', mid = 'cyan1', high = 'darkblue', label = TRUE, label_size = 5, geom = 'tile', layout.exp =0)
 ```
 
-** Clean up the data a little, remove columns that are inimportant or where I could not feasibly impute missing data.**
+**Clean up the data a little, remove columns that are inimportant or where I could not feasibly impute missing data.**
 
 ```{r}
 vg<-vg[-c(660,14247),]
@@ -65,7 +65,7 @@ vg[c(1:5, 7)] <- NULL
 vg[c(9, 11, 12)] <- NULL
 ```
 
-** I experimented with a log transform here.**
+**I experimented with a log transform here.**
 
 ```{r}
 #vg$NA_Sales <- log(vg$NA_Sales)
