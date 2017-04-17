@@ -181,3 +181,21 @@ tile
 
 ```
 
+**Generate variable importances plot.**
+
+```{r}
+# Save the variable importance values from our model object generated from caret.
+x<-varImp(model_train2, scale = TRUE)
+# Get the row names of the variable importance data
+rownames(x$importance)
+# Convert the variable importance data into a dataframe
+importance <- data.frame(rownames(x$importance), x$importance$Overall)
+# Relabel the data
+names(importance)<-c('Platform', 'Importance')
+# Order the data from greatest importance to least important
+importance <- transform(importance, Platform = reorder(Platform, Importance))
+# Plot the data with ggplot.
+ggplot(data=importance, aes(x=Platform, y=Importance)) +
+  geom_bar(stat = 'identity',colour = "blue", fill = "white") + coord_flip())
+```
+
